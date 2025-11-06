@@ -1,6 +1,9 @@
 services:
   db:
     image: postgres:16-alpine
+    profiles:
+      - dev
+      - prod
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
@@ -17,6 +20,8 @@ services:
       - internal
 
   web:
+    profiles:
+      - prod
     build:
       context: .
       dockerfile: Dockerfile
@@ -25,6 +30,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      HOSTNAME: 0.0.0.0
       DATABASE_URL: ${DATABASE_URL}
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
       ADMIN_TOKEN: ${ADMIN_TOKEN}
@@ -33,9 +39,9 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health > /dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health > /dev/null 2>&1 || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -43,8 +49,38 @@ services:
     networks:
       - internal
 
+  web-dev:
+    profiles:
+      - dev
+    image: node:20-alpine
+    working_dir: /app
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      DATABASE_URL: ${DATABASE_URL}
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
+      AUTH_DISABLED: ${AUTH_DISABLED}
+      N8N_WEBHOOK_URL: http://n8n:5678/webhook/chat
+    command: sh -c "npm install && npx prisma migrate deploy --schema=prisma/schema.prisma && npm run dev"
+    volumes:
+      - ./:/app
+      - web-dev-node-modules:/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    networks:
+      - internal
+
   n8n:
     image: n8nio/n8n:latest
+    profiles:
+      - n8n
     environment:
       - N8N_PORT=5678
       - N8N_BASIC_AUTH_ACTIVE=true
@@ -68,13 +104,35 @@ services:
       - "127.0.0.1:5678:5678"
     networks:
       - internal
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    profiles:
+      - prod
     depends_on:
-      - web
-      - mailpit
+      web:
+        condition: service_started
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN}
+      N8N_DOMAIN: ${N8N_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+      - ./docker/caddy/entrypoint.sh:/etc/caddy/entrypoint.sh:ro
+    networks:
+      - internal
+    command: ["/bin/sh", "/etc/caddy/entrypoint.sh"]
     restart: unless-stopped
 
   pgadmin:
     image: dpage/pgadmin4:latest
+    profiles:
+      - dev
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
@@ -88,6 +146,8 @@ services:
 
   mailpit:
     image: axllent/mailpit:latest
+    profiles:
+      - dev
     ports:
       - "127.0.0.1:8025:8025" # Mail UI
       - "127.0.0.1:1025:1025" # SMTP (optional to expose)
@@ -101,5 +161,8 @@ networks:
 volumes:
   db-data:
   n8n-data:
+  web-dev-node-modules:
+  caddy-data:
+  caddy-config:
 
 
