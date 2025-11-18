@@ -1,7 +1,9 @@
 export default function Home() {
   return (
     <div className="space-y-4">
-      <h1 className="text-3xl font-semibold">Willkommen zu meinem AI-Kurs.</h1>
+      <h1 className="text-3xl font-semibold">
+        Herzlich willkommen zu meinem AI-Kurs.
+      </h1>
       <p className="text-zinc-700 dark:text-zinc-300">
         In diesem Kurs bauen wir gemeinsam eine moderne Web‑App, verbinden n8n,
         erstellen einen Chat‑ und später Voice‑Agent und automatisieren Blog‑Beiträge.
